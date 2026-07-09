@@ -2,9 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/K1N3tiCs/chirpy/internal/auth"
+	"github.com/K1N3tiCs/chirpy/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -17,7 +21,8 @@ type User struct {
 
 func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	type response struct {
 		User
@@ -31,7 +36,22 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	user, err := cfg.db.CreateUser(r.Context(), params.Email)
+	if len(strings.Trim(params.Password, " ")) == 0 {
+		respondWithError(w, http.StatusBadRequest, "Provide valid password", errors.New("password cannot by empty"))
+		return
+	}
+
+	params.Password, err = auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create user", err)
+	}
+
+	userParams := database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: params.Password,
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), userParams)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create user", err)
 		return
