@@ -14,7 +14,7 @@ import (
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
-	db             *database.Queries
+	db             database.DB
 	platform       string
 	secret         string
 	polkaKey       string

@@ -1,0 +1,545 @@
+openapi: "3.0.3"
+info:
+  title: Chirpy API
+  version: "1.0.0"
+  description: Social media-style chirp platform
+
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /api/healthz:
+    get:
+      summary: Readiness probe
+      operationId: healthz
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /api/validate_chirp:
+    post:
+      summary: Validate and clean a chirp body
+      operationId: validateChirp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  maxLength: 140
+                  description: Chirp body (profanity filtered)
+      responses:
+        "200":
+          description: Chirp validated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cleaned_body:
+                    type: string
+        "400":
+          description: Chirp too long
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Couldn't decode parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users:
+    post:
+      summary: Create a new user
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 1
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: Empty password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update user email/password
+      operationId: updateUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "400":
+          description: Missing email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/login:
+    post:
+      summary: Authenticate user
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      token:
+                        type: string
+                        description: JWT access token (1h expiry)
+                      refresh_token:
+                        type: string
+                        description: Opaque refresh token (60d expiry)
+        "400":
+          description: Missing password or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Wrong password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/refresh:
+    post:
+      summary: Exchange refresh token for new JWT
+      operationId: refreshToken
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: New JWT issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: New JWT access token (1h expiry)
+        "400":
+          description: Missing or malformed token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Token expired, revoked, or not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/revoke:
+    post:
+      summary: Revoke a refresh token
+      operationId: revokeToken
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Token revoked
+        "400":
+          description: Missing or malformed token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/chirps:
+    get:
+      summary: List chirps
+      operationId: listChirps
+      parameters:
+        - name: author_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Filter by author user ID
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+          description: Sort order by created_at
+      responses:
+        "200":
+          description: Chirps retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Chirp'
+        "400":
+          description: Invalid author_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: No chirps found for author_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a chirp
+      operationId: createChirp
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  maxLength: 140
+      responses:
+        "201":
+          description: Chirp created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chirp'
+        "400":
+          description: Chirp too long
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/chirps/{chirpID}:
+    get:
+      summary: Get a chirp by ID
+      operationId: getChirp
+      parameters:
+        - name: chirpID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Chirp found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chirp'
+        "400":
+          description: Invalid chirp ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Chirp not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a chirp (owner only)
+      operationId: deleteChirp
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: chirpID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Chirp deleted
+        "400":
+          description: Invalid chirp ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: Chirp doesn't belong to user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Chirp not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/polka/webhooks:
+    post:
+      summary: Polka webhook (user.upgraded)
+      operationId: polkaWebhook
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event, data]
+              properties:
+                event:
+                  type: string
+                data:
+                  type: object
+                  required: [user_id]
+                  properties:
+                    user_id:
+                      type: string
+                      format: uuid
+      responses:
+        "204":
+          description: Event processed
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/metrics:
+    get:
+      summary: View fileserver hit count
+      operationId: adminMetrics
+      responses:
+        "200":
+          description: HTML page with metrics
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /admin/reset:
+    post:
+      summary: Reset application state (dev only)
+      operationId: adminReset
+      responses:
+        "200":
+          description: Reset successful
+          content:
+            text/plain:
+              schema:
+                type: string
+        "403":
+          description: Not in dev environment
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: JWT access token or refresh token
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Format: ApiKey <key>'
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        email:
+          type: string
+          format: email
+        is_chirpy_red:
+          type: boolean
+
+    Chirp:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+          format: uuid
+        body:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
