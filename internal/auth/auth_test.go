@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -106,5 +107,37 @@ func TestValidateJWT_Invalid(t *testing.T) {
 	_, err := ValidateJWT("invalid.token.string", "testsecret")
 	if err == nil {
 		t.Fatal("ValidateJWT should return error for invalid token")
+	}
+}
+
+func TestGetBearerToken_Valid(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer abc123")
+
+	token, err := GetBearerToken(headers)
+	if err != nil {
+		t.Fatalf("GetBearerToken returned error: %v", err)
+	}
+	if token != "abc123" {
+		t.Fatalf("GetBearerToken: got %v, want %v", token, "abc123")
+	}
+}
+
+func TestGetBearerToken_EmptyToken(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer ")
+
+	_, err := GetBearerToken(headers)
+	if err == nil {
+		t.Fatal("GetBearerToken should return error for empty token")
+	}
+}
+
+func TestGetBearerToken_MissingHeader(t *testing.T) {
+	headers := http.Header{}
+
+	_, err := GetBearerToken(headers)
+	if err == nil {
+		t.Fatal("GetBearerToken should return error for missing Authorization header")
 	}
 }
